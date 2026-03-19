@@ -1,3 +1,4 @@
+
 name: Release Build
 
 on:
@@ -31,7 +32,7 @@ jobs:
           path: git
 
       # -----------------------------
-      # 2. Install Git SDK
+      # 2. Install Git for Windows SDK
       # -----------------------------
       - name: Install Git for Windows SDK
         shell: bash
@@ -49,39 +50,27 @@ jobs:
           # Move build-extra into /usr/src
           mv "$GITHUB_WORKSPACE/build-extra" /usr/src/build-extra
 
+          # Flatten nested build-extra directory if present
+          if [ -d /usr/src/build-extra/build-extra ]; then
+              mv /usr/src/build-extra/build-extra/* /usr/src/build-extra/
+              rmdir /usr/src/build-extra/build-extra
+          fi
+
           # Move MSYS2-packages and git into /usr/src
           mv "$GITHUB_WORKSPACE/MSYS2-packages" /usr/src/MSYS2-packages
           mv "$GITHUB_WORKSPACE/git" /usr/src/git
 
       # -----------------------------
-      # 4. Build MSYS2 rootfs
+      # 4. Build everything using please.sh
       # -----------------------------
-      - name: Build MSYS2 rootfs
+      - name: Build Git for Windows (full installer)
         shell: bash
         run: |
           cd /usr/src/build-extra
-          ./build-rootfs.sh
+          ./please.sh build
 
       # -----------------------------
-      # 5. Build Git
-      # -----------------------------
-      - name: Build Git
-        shell: bash
-        run: |
-          cd /usr/src/build-extra
-          ./build-git.sh
-
-      # -----------------------------
-      # 6. Build installers
-      # -----------------------------
-      - name: Build installers
-        shell: bash
-        run: |
-          cd /usr/src/build-extra
-          ./build-installers.sh
-
-      # -----------------------------
-      # 7. Upload artifacts
+      # 5. Upload artifacts
       # -----------------------------
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
