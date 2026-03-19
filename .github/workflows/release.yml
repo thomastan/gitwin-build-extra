@@ -1,4 +1,4 @@
-name: Release Build (pin MSYS2-packages main, verify Bash)
+name: Release Build (minimal, pinned MSYS2-packages main)
 
 on:
   release:
@@ -7,11 +7,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      run_full_build:
-        description: 'Set to true to run the full build (default false runs probe only)'
-        required: false
-        default: 'false'
 
 jobs:
   build:
@@ -44,7 +39,7 @@ jobs:
         run: |
           curl -fLO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
 
-      - name: "Install 64-bit SDK to C:"
+      - name: "Install 64-bit SDK to C"
         shell: bash
         run: |
           mkdir -p /c/git-sdk-64
@@ -93,109 +88,47 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/git"
           fi
 
-      - name: "Verify MSYS2-packages HEAD and bash PKGBUILD"
+      - name: "Run please.sh if it exposes an installer/release/makepkg"
         shell: bash
         run: |
-          echo "MSYS2-packages HEAD and recent commits:"
-          git -C /c/git-sdk-64/usr/src/MSYS2-packages rev-parse --abbrev-ref HEAD || true
-          git -C /c/git-sdk-64/usr/src/MSYS2-packages rev-parse --short HEAD || true
-          git -C /c/git-sdk-64/usr/src/MSYS2-packages log -n 5 --oneline || true
-
-          echo ""
-          echo "Looking for bash PKGBUILD in common locations..."
-          if [ -f /c/git-sdk-64/usr/src/MSYS2-packages/mingw-w64-bash/PKGBUILD ]; then
-            echo "Found mingw-w64-bash PKGBUILD:"
-            sed -n '1,200p' /c/git-sdk-64/usr/src/MSYS2-packages/mingw-w64-bash/PKGBUILD
-          elif [ -f /c/git-sdk-64/usr/src/MSYS2-packages/bash/PKGBUILD ]; then
-            echo "Found bash PKGBUILD:"
-            sed -n '1,200p' /c/git-sdk-64/usr/src/MSYS2-packages/bash/PKGBUILD
-          else
-            echo "No bash PKGBUILD found at expected paths. Listing top-level MSYS2-packages dirs:"
-            ls -la /c/git-sdk-64/usr/src/MSYS2-packages | sed -n '1,200p'
-            # continue so probe output is available
-          fi
-
-      - name: "Probe please.sh output"
-        id: probe
-        shell: bash
-        run: |
+          set -euo pipefail
           cd /c/git-sdk-64/usr/src/build-extra || exit 1
+
+          # determine SDK32 path
+          if [ -f /c/git-sdk-64/usr/src/sdk32.path ]; then
+            SDK32_PATH=$(cat /c/git-sdk-64/usr/src/sdk32.path)
+          elif [ -f ../sdk32.path ]; then
+            SDK32_PATH=$(cat ../sdk32.path)
+          elif [ -f sdk32.path ]; then
+            SDK32_PATH=$(cat sdk32.path)
+          else
+            SDK32_PATH=${FALLBACK_SDK32_PATH}
+          fi
+          echo "Using windows.sdk32.path=$SDK32_PATH"
+
+          # capture please.sh output (do not fail)
           ./please.sh > please.help 2>&1 || true
           echo "=== please.sh output (first 200 lines) ==="
           sed -n '1,200p' please.help || true
           echo "=== end please.sh output ==="
-          CMD=""
-          if grep -qE '\brelease\b' please.help; then CMD=release; fi
-          if [ -z "$CMD" ] && grep -qE '\binstaller\b' please.help; then CMD=installer; fi
-          if [ -z "$CMD" ] && grep -qE '\bmakepkg\b' please.help; then CMD=makepkg; fi
-          echo "detected_please_cmd=$CMD" >> $GITHUB_OUTPUT
 
-      - name: "Run explicit Bash rebuild and optional installer creation"
-        if: ${{ github.event.inputs.run_full_build == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /c/git-sdk-64/usr/src || exit 1
-
-          SDK32_PATH=$(cat /c/git-sdk-64/usr/src/sdk32.path || echo /c/git-sdk-64)
-          echo "Using windows.sdk32.path=$SDK32_PATH"
-
-          if [ -d /c/git-sdk-64/usr/src/MSYS2-packages/mingw-w64-bash ]; then
-            PKGDIR=/c/git-sdk-64/usr/src/MSYS2-packages/mingw-w64-bash
-          elif [ -d /c/git-sdk-64/usr/src/MSYS2-packages/bash ]; then
-            PKGDIR=/c/git-sdk-64/usr/src/MSYS2-packages/bash
-          else
-            echo "ERROR: bash PKGBUILD not found; aborting explicit rebuild."
-            ls -la /c/git-sdk-64/usr/src/MSYS2-packages | sed -n '1,200p'
-            exit 2
-          fi
-
-          echo "Found bash PKGBUILD directory: $PKGDIR"
-          ls -la "$PKGDIR" | sed -n '1,200p'
-
-          echo "Building bash package with makepkg-mingw..."
-          env "windows.sdk32.path=$SDK32_PATH" bash -lc "cd '$PKGDIR' && makepkg-mingw -sci --noconfirm" || {
-            echo "makepkg-mingw failed; printing any logs"
-            find "$PKGDIR" -type f -name '*.log' -print -exec sed -n '1,200p' {} \; || true
-            exit 3
-          }
-
-          echo "Built package files (searching):"
-          find /c/git-sdk-64/usr/src -type f -name '*bash*.pkg.*' -print | sed -n '1,200p' || true
-
-          cd /c/git-sdk-64/usr/src/build-extra
-          ./please.sh > please.help 2>&1 || true
+          # prefer installer, then release, then makepkg
           if grep -qE '\binstaller\b' please.help; then
-            echo "please.sh supports installer; running installer"
+            echo "Detected 'installer' command; running installer"
             env "windows.sdk32.path=$SDK32_PATH" ./please.sh installer
+          elif grep -qE '\brelease\b' please.help; then
+            echo "Detected 'release' command; running release"
+            env "windows.sdk32.path=$SDK32_PATH" ./please.sh release
+          elif grep -qE '\bmakepkg\b' please.help; then
+            echo "Detected 'makepkg' command; running makepkg"
+            env "windows.sdk32.path=$SDK32_PATH" ./please.sh makepkg
           else
-            echo "please.sh does not expose installer; skipping automatic installer creation."
+            echo "No installer/release/makepkg command exposed by please.sh; skipping heavy build."
+            echo "If you expect a build, ensure build-extra provides an orchestration command or run workflow manually."
           fi
 
-      - name: "Inspect artifacts and logs"
-        shell: bash
-        run: |
-          echo "=== Artifacts directory listing ==="
-          ls -la /c/git-sdk-64/usr/src/build-extra/out || true
-          echo "=== Artifacts recursive (limited) ==="
-          find /c/git-sdk-64/usr/src/build-extra/out -maxdepth 4 -type f -print | sed -n '1,200p' || true
-
-          echo "=== Search for built bash packages ==="
-          find /c/git-sdk-64/usr/src -type f -name '*bash*.pkg.*' -print | sed -n '1,200p' || true
-
-          echo "=== Search build logs for 'bash' mentions ==="
-          grep -R --line-number "bash" /c/git-sdk-64/usr/src/build-extra || true
-
-          for f in /c/git-sdk-64/usr/src/build-extra/out/*.zip; do
-            [ -f "$f" ] && echo "ZIP: $f" && unzip -l "$f" | sed -n '1,200p'
-          done
-
-      - name: "Upload build evidence"
+      - name: "Upload artifacts (if any)"
         uses: actions/upload-artifact@v4
         with:
-          name: build-evidence
-          path: |
-            /c/git-sdk-64/usr/src/build-extra/out/**
-            /c/git-sdk-64/usr/src/**/pkg*.*
-            /c/git-sdk-64/usr/src/**/PKGBUILD
-            /c/git-sdk-64/usr/src/**/build-logs/**
+          name: git-for-windows-artifacts
+          path: /c/git-sdk-64/usr/src/build-extra/out/artifacts/*
