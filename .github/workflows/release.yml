@@ -9,9 +9,6 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # -----------------------------
-      # 1. Checkout all required repos
-      # -----------------------------
       - name: Checkout build-extra
         uses: actions/checkout@v4
         with:
@@ -30,22 +27,27 @@ jobs:
           repository: git-for-windows/git
           path: git
 
-      # -----------------------------
-      # 2. Install Git for Windows SDK
-      # -----------------------------
-      - name: Install Git for Windows SDK
+      - name: Download Git SDK
         shell: bash
         run: |
-          mkdir -p /c/git-sdk-64
           curl -LO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
+
+      - name: Install Git for Windows SDK to C drive
+        shell: bash
+        run: |
+          # Ensure SDK root exists and create usr/src layout
+          mkdir -p /c/git-sdk-64
+          mkdir -p /c/git-sdk-64/usr/src
+
+          # Extract SDK into C:/git-sdk-64 root
           tar -xzf git-sdk-x86_64-minimal.tar.gz -C /c/git-sdk-64 --strip-components=1
 
-      # -----------------------------
-      # 3. Move repos into SDK layout
-      # -----------------------------
       - name: Move repos into SDK layout
         shell: bash
         run: |
+          # Ensure target usr/src exists
+          mkdir -p /c/git-sdk-64/usr/src
+
           # Move build-extra into SDK
           mv "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/build-extra
 
@@ -59,18 +61,12 @@ jobs:
           mv "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/MSYS2-packages
           mv "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/git
 
-      # -----------------------------
-      # 4. Build everything using please.sh
-      # -----------------------------
       - name: Build Git for Windows (full installer)
         shell: bash
         run: |
           cd /c/git-sdk-64/usr/src/build-extra
           ./please.sh release
 
-      # -----------------------------
-      # 5. Upload artifacts
-      # -----------------------------
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
