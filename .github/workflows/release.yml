@@ -1,4 +1,3 @@
-
 name: Release Build
 
 on:
@@ -10,10 +9,14 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # -----------------------------
+      # 1. Checkout all required repos
+      # -----------------------------
       - name: Checkout build-extra
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: build-extra
 
       - name: Checkout MSYS2-packages (your fork)
         uses: actions/checkout@v4
@@ -27,6 +30,9 @@ jobs:
           repository: git-for-windows/git
           path: git
 
+      # -----------------------------
+      # 2. Install Git SDK
+      # -----------------------------
       - name: Install Git for Windows SDK
         shell: bash
         run: |
@@ -34,26 +40,51 @@ jobs:
           curl -LO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
           tar -xzf git-sdk-x86_64-minimal.tar.gz -C /usr/src
 
+      # -----------------------------
+      # 3. Move repos into SDK layout
+      # -----------------------------
+      - name: Move repos into SDK layout
+        shell: bash
+        run: |
+          # Move build-extra into /usr/src
+          mv "$GITHUB_WORKSPACE/build-extra" /usr/src/build-extra
+
+          # Move MSYS2-packages and git into /usr/src
+          mv "$GITHUB_WORKSPACE/MSYS2-packages" /usr/src/MSYS2-packages
+          mv "$GITHUB_WORKSPACE/git" /usr/src/git
+
+      # -----------------------------
+      # 4. Build MSYS2 rootfs
+      # -----------------------------
       - name: Build MSYS2 rootfs
         shell: bash
         run: |
           cd /usr/src/build-extra
           ./build-rootfs.sh
 
+      # -----------------------------
+      # 5. Build Git
+      # -----------------------------
       - name: Build Git
         shell: bash
         run: |
           cd /usr/src/build-extra
           ./build-git.sh
 
+      # -----------------------------
+      # 6. Build installers
+      # -----------------------------
       - name: Build installers
         shell: bash
         run: |
           cd /usr/src/build-extra
           ./build-installers.sh
 
+      # -----------------------------
+      # 7. Upload artifacts
+      # -----------------------------
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: git-for-windows-artifacts
-          path: out/artifacts/*
+          path: /usr/src/build-extra/out/artifacts/*
