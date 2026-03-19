@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      # default fallback; may be overridden at runtime if a real 32-bit SDK is found
+      # fallback: point 32-bit SDK requests to the 64-bit SDK
       WINDOWS_SDK32_PATH: /c/git-sdk-64
 
     steps:
@@ -23,6 +23,8 @@ jobs:
         with:
           repository: thomastan/MSYS2-packages
           path: MSYS2-packages
+          # optional: pin a branch explicitly
+          # ref: main
 
       - name: Checkout git (upstream)
         uses: actions/checkout@v4
@@ -42,101 +44,121 @@ jobs:
           tar -xzf git-sdk-x86_64-minimal.tar.gz -C /c/git-sdk-64 --strip-components=1
           mkdir -p /c/git-sdk-64/usr/src
 
-      - name: Try download 32-bit SDK or fallback to 64-bit
+      - name: Try to download 32-bit SDK (optional) or fallback
         shell: bash
         id: sdk32
         run: |
           set -e
-          # Try common 32-bit SDK release names (may not exist)
+          mkdir -p /c/git-sdk-32
+          FOUND=0
           for url in \
             "https://github.com/git-for-windows/git-sdk-32/releases/latest/download/git-sdk-i686-minimal.tar.gz" \
             "https://github.com/git-for-windows/git-sdk-32/releases/latest/download/git-sdk-x86_minimal.tar.gz"; do
             echo "Trying $url"
             if curl -fLO "$url"; then
-              echo "FOUND_32=1" > sdk32.out
               tar -xzf *.tar.gz -C /c/git-sdk-32 --strip-components=1 || true
               echo "windows.sdk32.path=/c/git-sdk-32" > sdk32.env
-              exit 0
+              FOUND=1
+              break
             fi
           done
-          # No 32-bit SDK found: set fallback to 64-bit
-          echo "FOUND_32=0" > sdk32.out
-          echo "windows.sdk32.path=/c/git-sdk-64" > sdk32.env
+          if [ "$FOUND" -eq 0 ]; then
+            echo "No 32-bit SDK found; falling back to 64-bit SDK"
+            echo "windows.sdk32.path=/c/git-sdk-64" > sdk32.env
+          fi
+          echo "found32=$FOUND" > sdk32.out
 
       - name: Move repos into SDK layout
         shell: bash
         run: |
-          # ensure usr/src exists
           mkdir -p /c/git-sdk-64/usr/src
 
-          # move build-extra into SDK usr/src
-          mv "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/build-extra || (cp -a "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/ && rm -rf "$GITHUB_WORKSPACE/build-extra")
+          # Move or copy build-extra into SDK usr/src
+          if mv "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/build-extra 2>/dev/null; then
+            echo "Moved build-extra"
+          else
+            echo "mv failed; copying build-extra"
+            cp -a "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/
+            rm -rf "$GITHUB_WORKSPACE/build-extra"
+          fi
 
-          # flatten nested build-extra if present
+          # Flatten nested build-extra if present
           if [ -d /c/git-sdk-64/usr/src/build-extra/build-extra ]; then
             mv /c/git-sdk-64/usr/src/build-extra/build-extra/* /c/git-sdk-64/usr/src/build-extra/ || true
             rmdir /c/git-sdk-64/usr/src/build-extra/build-extra || true
           fi
 
-          # move MSYS2-packages and git into SDK usr/src
-          mv "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/MSYS2-packages || (cp -a "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/ && rm -rf "$GITHUB_WORKSPACE/MSYS2-packages")
-          mv "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/git || (cp -a "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/ && rm -rf "$GITHUB_WORKSPACE/git")
+          # Move or copy MSYS2-packages and git into SDK usr/src
+          if mv "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/MSYS2-packages 2>/dev/null; then
+            echo "Moved MSYS2-packages"
+          else
+            cp -a "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/
+            rm -rf "$GITHUB_WORKSPACE/MSYS2-packages"
+          fi
 
-      - name: Export windows.sdk32.path if fallback used
+          if mv "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/git 2>/dev/null; then
+            echo "Moved git"
+          else
+            cp -a "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/
+            rm -rf "$GITHUB_WORKSPACE/git"
+          fi
+
+      - name: Export windows.sdk32.path for please.sh
         shell: bash
         run: |
-          # read the env file produced earlier and export it for the job
           if [ -f sdk32.env ]; then
-            cat sdk32.env
-            # this file contains a single line like: windows.sdk32.path=/c/git-sdk-64
-            export $(cat sdk32.env)
-            echo "Exported windows.sdk32.path=$windows_sdk32_path"
+            # sdk32.env contains a single line like: windows.sdk32.path=/c/git-sdk-64
+            . ./sdk32.env
+            echo "Exporting windows.sdk32.path=$windows_sdk32_path"
+            export windows.sdk32.path="$windows_sdk32_path"
+          else
+            export windows.sdk32.path=/c/git-sdk-64
+            echo "Exporting default windows.sdk32.path=/c/git-sdk-64"
           fi
         env:
-          # ensure variable name is available in this step
+          # make the fallback value available inside the step
           windows_sdk32_path: ${{ env.WINDOWS_SDK32_PATH }}
 
-      - name: Probe please.sh and choose build command
+      - name: Probe please.sh and pick command
+        id: detect
         shell: bash
         run: |
           cd /c/git-sdk-64/usr/src/build-extra
-
-          echo "Listing please.sh help to detect available commands"
-          # capture help output
           ./please.sh > please.help 2>&1 || true
           cat please.help
 
-          # choose preferred command in order: release, installer, git, makepkg
+          # prefer full release, then installer, then git, then makepkg
           if grep -qE '\brelease\b' please.help; then
-            CMD=release
+            echo "cmd=release" >> $GITHUB_OUTPUT
           elif grep -qE '\binstaller\b' please.help; then
-            CMD=installer
+            echo "cmd=installer" >> $GITHUB_OUTPUT
           elif grep -qE '\bgit\b' please.help; then
-            CMD=git
+            echo "cmd=git" >> $GITHUB_OUTPUT
           elif grep -qE '\bmakepkg\b' please.help; then
-            CMD=makepkg
+            echo "cmd=makepkg" >> $GITHUB_OUTPUT
           else
-            echo "No known build command found in please.sh help. Aborting."
+            echo "No known please.sh command found" >&2
             exit 2
           fi
-
-          echo "Selected please.sh command: $CMD"
-          echo "RUN_CMD=$CMD" > run_cmd.out
 
       - name: Run please.sh chosen command
         shell: bash
         run: |
           cd /c/git-sdk-64/usr/src/build-extra
-          CMD=$(cat run_cmd.out | sed -n 's/^RUN_CMD=//p')
-          echo "Running: ./please.sh $CMD"
-          # export windows.sdk32.path for please.sh if set
-          if [ -n "$windows.sdk32.path" ]; then
-            export windows_sdk32_path="$windows.sdk32.path"
-            export windows.sdk32.path="$windows.sdk32.path"
+
+          # ensure the 32-bit SDK override is visible to please.sh
+          if [ -f sdk32.env ]; then
+            . ./sdk32.env
+            export windows.sdk32.path="$windows_sdk32_path"
+          else
+            export windows.sdk32.path=/c/git-sdk-64
           fi
+
+          CMD="${{ steps.detect.outputs.cmd }}"
+          echo "Running: ./please.sh $CMD"
           ./please.sh "$CMD"
 
-      - name: Upload artifacts if present
+      - name: Upload artifacts (if any)
         uses: actions/upload-artifact@v4
         with:
           name: git-for-windows-artifacts
