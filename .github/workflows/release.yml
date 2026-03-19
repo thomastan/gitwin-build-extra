@@ -8,7 +8,6 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      # fallback for 32-bit SDK requests (there are no published 32-bit SDKs)
       FALLBACK_SDK32_PATH: /c/git-sdk-64
 
     steps:
@@ -23,7 +22,6 @@ jobs:
         with:
           repository: thomastan/MSYS2-packages
           path: MSYS2-packages
-          # optional: pin a branch explicitly
           # ref: main
 
       - name: Checkout git (upstream)
@@ -32,19 +30,19 @@ jobs:
           repository: git-for-windows/git
           path: git
 
-      - name: Download 64-bit Git SDK
+      - name: "Download 64-bit Git SDK"
         shell: bash
         run: |
           curl -fLO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
 
-      - name: Install 64-bit SDK to C:
+      - name: "Install 64-bit SDK to C:"
         shell: bash
         run: |
           mkdir -p /c/git-sdk-64
           tar -xzf git-sdk-x86_64-minimal.tar.gz -C /c/git-sdk-64 --strip-components=1
           mkdir -p /c/git-sdk-64/usr/src
 
-      - name: Try 32-bit SDK or write fallback path
+      - name: "Try 32-bit SDK or write fallback path"
         id: sdk32
         shell: bash
         run: |
@@ -66,12 +64,11 @@ jobs:
           fi
           echo "found32=$FOUND" > sdk32.out
 
-      - name: Place repos into SDK layout
+      - name: "Place repos into SDK layout"
         shell: bash
         run: |
           mkdir -p /c/git-sdk-64/usr/src
 
-          # Move or copy build-extra
           if mv "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/build-extra 2>/dev/null; then
             echo "Moved build-extra"
           else
@@ -79,13 +76,11 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/build-extra"
           fi
 
-          # Flatten nested build-extra if present
           if [ -d /c/git-sdk-64/usr/src/build-extra/build-extra ]; then
             mv /c/git-sdk-64/usr/src/build-extra/build-extra/* /c/git-sdk-64/usr/src/build-extra/ || true
             rmdir /c/git-sdk-64/usr/src/build-extra/build-extra || true
           fi
 
-          # Move or copy MSYS2-packages and git
           if mv "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/MSYS2-packages 2>/dev/null; then
             echo "Moved MSYS2-packages"
           else
@@ -100,14 +95,13 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/git"
           fi
 
-      - name: Detect and run build entrypoint (robust)
+      - name: "Detect and run build entrypoint (robust)"
         id: run-build
         shell: bash
         run: |
           set -euo pipefail
           cd /c/git-sdk-64/usr/src/build-extra
 
-          # determine SDK32 path (file contains only the path)
           if [ -f /c/git-sdk-64/usr/src/sdk32.path ]; then
             SDK32_PATH=$(cat /c/git-sdk-64/usr/src/sdk32.path)
           elif [ -f ../sdk32.path ]; then
@@ -119,7 +113,6 @@ jobs:
           fi
           echo "Using windows.sdk32.path=$SDK32_PATH"
 
-          # Print layout and top-level files for debugging
           echo "=== SDK root ==="
           ls -la /c/git-sdk-64 || true
           echo "=== usr/src ==="
@@ -127,13 +120,11 @@ jobs:
           echo "=== build-extra top ==="
           ls -la . || true
 
-          # Capture please.sh output (it may print usage and utility commands)
           ./please.sh > please.help 2>&1 || true
           echo "=== please.sh output (first 200 lines) ==="
           sed -n '1,200p' please.help || true
           echo "=== end please.sh output ==="
 
-          # 1) If please.sh exposes orchestration commands, prefer them
           PLS_CMD=""
           if grep -qE '\brelease\b' please.help; then
             PLS_CMD=release
@@ -145,17 +136,13 @@ jobs:
 
           if [ -n "$PLS_CMD" ]; then
             echo "Selected please.sh command: $PLS_CMD"
-            echo "Running: env \"windows.sdk32.path=$SDK32_PATH\" ./please.sh $PLS_CMD"
             env "windows.sdk32.path=$SDK32_PATH" ./please.sh "$PLS_CMD"
-            echo "please.sh $PLS_CMD finished"
             echo "method=please" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # 2) If please.sh has no build orchestration, look for common legacy entrypoints
-          # Check for explicit scripts or Makefiles that indicate how to build
           if [ -x ./build-rootfs.sh ] || [ -f ./build-rootfs.sh ]; then
-            echo "Found build-rootfs.sh; running full legacy sequence"
+            echo "Found build-rootfs.sh; running legacy sequence"
             env "windows.sdk32.path=$SDK32_PATH" ./build-rootfs.sh
             env "windows.sdk32.path=$SDK32_PATH" ./build-git.sh || true
             env "windows.sdk32.path=$SDK32_PATH" ./build-installers.sh || true
@@ -191,29 +178,19 @@ jobs:
             exit 0
           fi
 
-          # 3) If none of the above are present, try building via MSYS2-packages (best-effort)
           if [ -d /c/git-sdk-64/usr/src/MSYS2-packages ]; then
             echo "MSYS2-packages present; attempting package rebuild (best-effort)"
-            # run inside the SDK shell to use pacman/makepkg; this is best-effort and may require network/pacman keys
-            # run a short, non-destructive command to verify environment
             env "windows.sdk32.path=$SDK32_PATH" bash -lc "cd /usr/src/MSYS2-packages && echo 'PKGBUILDs:' && ls -1 | head -n 20" || true
             echo "method=msys2-packages-check" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # 4) Nothing found — fail with clear diagnostics
           echo ""
           echo "ERROR: No build orchestration entrypoint found in build-extra."
-          echo "please.sh printed the following (above). Known build entrypoints the workflow looks for:"
-          echo " - please.sh release|installer|makepkg"
-          echo " - ./build-rootfs.sh, ./build-git.sh, ./build-installers.sh"
-          echo " - top-level Makefile, installer/Makefile"
-          echo ""
-          echo "If you have a custom build command you run locally, edit this workflow to run that command explicitly."
-          echo "To proceed automatically, add a script or Makefile to build-extra that performs the full build."
+          echo "please.sh printed the output above. Add a build script or pin build-extra to a branch with a build entrypoint."
           exit 2
 
-      - name: Upload artifacts (if any)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: git-for-windows-artifacts
