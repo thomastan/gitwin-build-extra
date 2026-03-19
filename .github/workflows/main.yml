@@ -1,6 +1,10 @@
 name: PR build
 
-on: pull_request
+on:
+  push:
+    banches:
+      - main
+  pull_request:
 
 env:
   GIT_CONFIG_PARAMETERS: "'checkout.workers=56'"

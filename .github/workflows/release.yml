@@ -1,0 +1,92 @@
+name: Build GitXdgPatched
+
+on:
+  push:
+    branches: [ main, bash-xdg-patched ]
+  workflow_dispatch:
+
+jobs:
+  package-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Install Git-for-Windows SDK
+        id: install-sdk
+        uses: git-for-windows/setup-git-for-windows-sdk@v1
+        with:
+          flavor: build-installers
+
+      - name: Add in build-extra
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/git-for-windows/build-extra "$GIT_SDK_64/usr/src/build-extra"
+          echo "GIT_VER=$("$GIT_SDK_64/mingw64/bin/git.exe" --version | awk '{print $3}')" >> $GITHUB_ENV
+
+      - name: Inject Patched Bash
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ secrets.MSYS2_PACKAGES_PAT }}
+          SDK_ROOT: ${{ steps.install-sdk.outputs.result }}
+        run: |
+          gh release download --repo thomastan/msys2-packages --pattern "bash-*.pkg.tar.zst"
+          tar -xvf bash-*.pkg.tar.zst -C %SDK_ROOT% usr/bin/bash.exe
+
+      - name: Deep Verify Bash Patch
+        shell: bash
+        env:
+          MSYSTEM: msys
+        run: |
+          echo "Testing: $(which bash) | $(sha256sum $(which bash) | awk '{print $1}')"
+
+          export XDG_CONFIG_HOME="/tmp/xdg_config"
+          export XDG_STATE_HOME="/tmp/xdg_state"
+          mkdir -p "$XDG_CONFIG_HOME/bash" "$XDG_STATE_HOME/bash"
+          touch "$XDG_CONFIG_HOME/bash/bashrc" "$XDG_STATE_HOME/bash/bash_history"
+
+          bash -i -c 'echo "HIST:$HISTFILE"; echo "RC:$BASHRC"' < /dev/null > output.txt 2>&1
+          cat output.txt
+
+          grep -q "$XDG_STATE_HOME/bash/bash_history" output.txt || { echo "FAIL: XDG_STATE_HOME ignored"; exit 1; }
+          grep -q "$XDG_CONFIG_HOME/bash/bashrc" output.txt || { echo "FAIL: XDG_CONFIG_HOME ignored"; exit 1; }
+
+          # Test legacy fallback
+          rm -rf $XDG_STATE_HOME $XDG_CONFIG_HOME
+          unset XDG_STATE_HOME XDG_CONFIG_HOME
+          RESULT=$(env -u HISTFILE bash -i -c 'echo $HISTFILE' < /dev/null 2>/dev/null)
+          [[ "$RESULT" == "$HOME/.bash_history" ]] || { echo "Error: Expected $HOME/.bash_history but got $RESULT"; exit 1; }
+
+      - name: Build Git with XdgPatched-Bash
+        shell: bash
+        env:
+          MSYSTEM: MINGW64
+          SDK_ROOT: ${{ steps.install-sdk.outputs.result }}
+        run: |
+          cd "$SDK_ROOT/usr/src/build-extra/installer"
+          sed -i "s/AppName=Git/AppName=GitXdgPatched/" install.iss
+          $SDK_ROOT/usr/bin/bash --login -c "cd /usr/src/build-extra/installer && ./release.sh $GIT_VER"
+
+          mkdir $GITHUB_WORKSPACE/release-artifacts
+          cp $(cygpath -u $USERPROFILE)/Git*.exe $GITHUB_WORKSPACE/release-artifacts/
+
+          # Copy the standalone XDG-patched Bash binary (note: we navigated away)
+          cp -f $SDK_ROOT/usr/bin/bash.exe $GITHUB_WORKSPACE/release-artifacts/git-bash-xdg-patched.exe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/main') || contains(github.ref, 'bash-xdg-patched')
+        with:
+          tag_name: v${{ github.run_number }}-xdg-patched
+          name: GitXdgPatched Build ${{ github.run_number }}
+          body: |
+            ### Custom Git for Windows Build
+            This release includes a custom-patched Bash that supports XDG Directory specifications.
+
+            **Included Assets:**
+            - `GitXdgPatched-Setup.exe`: Full Git for Windows installer with the patch.
+            - `bash-xdg-patched.exe`: Standalone patched MSYS2 bash binary.
+
+            **Base Git Version:** ${{ env.GIT_VER }}
+          files: |
+            release-artifacts/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
