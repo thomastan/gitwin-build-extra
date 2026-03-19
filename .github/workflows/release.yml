@@ -1,3 +1,4 @@
+
 name: Release Build
 
 on:
@@ -29,8 +30,9 @@ jobs:
       - name: Install Git for Windows SDK
         shell: bash
         run: |
+          mkdir -p /usr/src
           curl -LO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
-          tar -xf git-sdk-x86_64-minimal.tar.gz -C /usr/src
+          tar -xzf git-sdk-x86_64-minimal.tar.gz -C /usr/src
 
       - name: Build MSYS2 rootfs
         shell: bash
@@ -55,4 +57,3 @@ jobs:
         with:
           name: git-for-windows-artifacts
           path: out/artifacts/*
-
