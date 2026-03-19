@@ -29,8 +29,8 @@ jobs:
       - name: Install Git for Windows SDK
         shell: bash
         run: |
-          curl -LO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-64-minimal.tar.xz
-          tar -xf git-sdk-64-minimal.tar.xz -C /usr/src
+          curl -LO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
+          tar -xf git-sdk-x86_64-minimal.tar.gz -C /usr/src
 
       - name: Build MSYS2 rootfs
         shell: bash
