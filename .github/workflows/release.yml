@@ -7,9 +7,11 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # fallback value used if no 32-bit SDK is found
+      FALLBACK_SDK32_PATH: /c/git-sdk-64
 
     steps:
-      # 1) Checkout repositories
       - name: Checkout build-extra
         uses: actions/checkout@v4
         with:
@@ -21,8 +23,7 @@ jobs:
         with:
           repository: thomastan/MSYS2-packages
           path: MSYS2-packages
-          # optional: pin a branch
-          # ref: main
+          ref: main
 
       - name: Checkout git (upstream)
         uses: actions/checkout@v4
@@ -30,13 +31,11 @@ jobs:
           repository: git-for-windows/git
           path: git
 
-      # 2) Download 64-bit SDK
       - name: Download 64-bit Git SDK
         shell: bash
         run: |
           curl -fLO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
 
-      # 3) Install 64-bit SDK to C: and create usr/src layout
       - name: Install 64-bit SDK to C drive
         shell: bash
         run: |
@@ -44,8 +43,7 @@ jobs:
           tar -xzf git-sdk-x86_64-minimal.tar.gz -C /c/git-sdk-64 --strip-components=1
           mkdir -p /c/git-sdk-64/usr/src
 
-      # 4) Try to download 32-bit SDK; if none exists, write fallback path (plain path only)
-      - name: Try download 32-bit SDK or write fallback
+      - name: Try to download 32-bit SDK or write fallback path
         id: sdk32
         shell: bash
         run: |
@@ -59,19 +57,18 @@ jobs:
             if curl -fLO "$url"; then
               echo "Found 32-bit SDK at $url"
               tar -xzf *.tar.gz -C /c/git-sdk-32 --strip-components=1 || true
-              echo "/c/git-sdk-32" > sdk32.path
+              echo "/c/git-sdk-32" > /c/git-sdk-64/usr/src/sdk32.path
               FOUND=1
               break
             fi
           done
           if [ "$FOUND" -eq 0 ]; then
             echo "No 32-bit SDK found; falling back to 64-bit SDK"
-            echo "/c/git-sdk-64" > sdk32.path
+            echo "/c/git-sdk-64" > /c/git-sdk-64/usr/src/sdk32.path
           fi
           echo "found32=$FOUND" > sdk32.out
 
-      # 5) Move repos into SDK layout (siblings under usr/src)
-      - name: Move repos into SDK layout
+      - name: Move repos into SDK layout (siblings under usr/src)
         shell: bash
         run: |
           mkdir -p /c/git-sdk-64/usr/src
@@ -106,56 +103,69 @@ jobs:
             rm -rf "$GITHUB_WORKSPACE/git"
           fi
 
-      # 6) Probe please.sh to detect available commands
-      - name: Probe please.sh and choose command
+      - name: Probe please.sh and choose build command
         id: detect
         shell: bash
         run: |
           cd /c/git-sdk-64/usr/src/build-extra
-          ./please.sh > please.help 2>&1 || true
-          cat please.help
 
-          # prefer full release, then installer, then git, then makepkg
+          # Print the environment and layout for debugging
+          echo "SDK layout:"
+          ls -la /c/git-sdk-64
+          echo "usr/src contents:"
+          ls -la /c/git-sdk-64/usr/src || true
+
+          # Capture please.sh help output (do not fail on nonzero exit)
+          ./please.sh > please.help 2>&1 || true
+          echo "=== please.sh help (first 400 lines) ==="
+          sed -n '1,400p' please.help || true
+          echo "=== end please.sh help ==="
+
+          # Detect available commands in order of preference
+          CMD=""
           if grep -qE '\brelease\b' please.help; then
-            echo "cmd=release" >> $GITHUB_OUTPUT
+            CMD=release
           elif grep -qE '\binstaller\b' please.help; then
-            echo "cmd=installer" >> $GITHUB_OUTPUT
+            CMD=installer
           elif grep -qE '\bgit\b' please.help; then
-            echo "cmd=git" >> $GITHUB_OUTPUT
+            CMD=git
           elif grep -qE '\bmakepkg\b' please.help; then
-            echo "cmd=makepkg" >> $GITHUB_OUTPUT
-          else
-            echo "No known please.sh command found" >&2
+            CMD=makepkg
+          fi
+
+          if [ -z "$CMD" ]; then
+            echo "No known please.sh build command found. please.help has been printed above."
+            echo "If you know the correct command for this build-extra, edit the workflow to run it explicitly."
             exit 2
           fi
 
-      # 7) Run please.sh with the dotted env var set for the child process (do not source sdk32.path)
+          echo "cmd=$CMD" >> $GITHUB_OUTPUT
+
       - name: Run please.sh chosen command
         shell: bash
         run: |
           cd /c/git-sdk-64/usr/src/build-extra
 
-          # read sdk32.path (contains only the path, e.g. /c/git-sdk-64 or /c/git-sdk-32)
-          if [ -f ../sdk32.path ]; then
+          # Read sdk32.path (contains only the path, e.g. /c/git-sdk-64 or /c/git-sdk-32)
+          if [ -f /c/git-sdk-64/usr/src/sdk32.path ]; then
+            SDK32_PATH=$(cat /c/git-sdk-64/usr/src/sdk32.path)
+          elif [ -f ../sdk32.path ]; then
             SDK32_PATH=$(cat ../sdk32.path)
           elif [ -f sdk32.path ]; then
             SDK32_PATH=$(cat sdk32.path)
-          elif [ -f sdk32.path ]; then
-            SDK32_PATH=$(cat sdk32.path)
           else
-            SDK32_PATH=/c/git-sdk-64
+            SDK32_PATH=${{ env.FALLBACK_SDK32_PATH }}
           fi
 
           echo "Using windows.sdk32.path=$SDK32_PATH"
 
           CMD="${{ steps.detect.outputs.cmd }}"
-          echo "Running: ./please.sh $CMD"
+          echo "Running: env \"windows.sdk32.path=$SDK32_PATH\" ./please.sh $CMD"
 
-          # set the dotted env var only for the child process
+          # Run please.sh with the dotted env var set only for the child process
           env "windows.sdk32.path=$SDK32_PATH" ./please.sh "$CMD"
 
-      # 8) Upload artifacts if present
-      - name: Upload artifacts
+      - name: Upload artifacts (if any)
         uses: actions/upload-artifact@v4
         with:
           name: git-for-windows-artifacts
