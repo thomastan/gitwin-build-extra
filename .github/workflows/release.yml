@@ -7,6 +7,9 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # default fallback; may be overridden at runtime if a real 32-bit SDK is found
+      WINDOWS_SDK32_PATH: /c/git-sdk-64
 
     steps:
       - name: Checkout build-extra
@@ -27,47 +30,113 @@ jobs:
           repository: git-for-windows/git
           path: git
 
-      - name: Download Git SDK
+      - name: Download 64-bit Git SDK
         shell: bash
         run: |
-          curl -LO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
+          curl -fLO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
 
-      - name: Install Git for Windows SDK to C drive
+      - name: Install 64-bit SDK to C drive
         shell: bash
         run: |
-          # Ensure SDK root exists and create usr/src layout
           mkdir -p /c/git-sdk-64
+          tar -xzf git-sdk-x86_64-minimal.tar.gz -C /c/git-sdk-64 --strip-components=1
           mkdir -p /c/git-sdk-64/usr/src
 
-          # Extract SDK into C:/git-sdk-64 root
-          tar -xzf git-sdk-x86_64-minimal.tar.gz -C /c/git-sdk-64 --strip-components=1
+      - name: Try download 32-bit SDK or fallback to 64-bit
+        shell: bash
+        id: sdk32
+        run: |
+          set -e
+          # Try common 32-bit SDK release names (may not exist)
+          for url in \
+            "https://github.com/git-for-windows/git-sdk-32/releases/latest/download/git-sdk-i686-minimal.tar.gz" \
+            "https://github.com/git-for-windows/git-sdk-32/releases/latest/download/git-sdk-x86_minimal.tar.gz"; do
+            echo "Trying $url"
+            if curl -fLO "$url"; then
+              echo "FOUND_32=1" > sdk32.out
+              tar -xzf *.tar.gz -C /c/git-sdk-32 --strip-components=1 || true
+              echo "windows.sdk32.path=/c/git-sdk-32" > sdk32.env
+              exit 0
+            fi
+          done
+          # No 32-bit SDK found: set fallback to 64-bit
+          echo "FOUND_32=0" > sdk32.out
+          echo "windows.sdk32.path=/c/git-sdk-64" > sdk32.env
 
       - name: Move repos into SDK layout
         shell: bash
         run: |
-          # Ensure target usr/src exists
+          # ensure usr/src exists
           mkdir -p /c/git-sdk-64/usr/src
 
-          # Move build-extra into SDK
-          mv "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/build-extra
+          # move build-extra into SDK usr/src
+          mv "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/build-extra || (cp -a "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/ && rm -rf "$GITHUB_WORKSPACE/build-extra")
 
-          # Flatten nested build-extra directory if present
+          # flatten nested build-extra if present
           if [ -d /c/git-sdk-64/usr/src/build-extra/build-extra ]; then
-              mv /c/git-sdk-64/usr/src/build-extra/build-extra/* /c/git-sdk-64/usr/src/build-extra/
-              rmdir /c/git-sdk-64/usr/src/build-extra/build-extra
+            mv /c/git-sdk-64/usr/src/build-extra/build-extra/* /c/git-sdk-64/usr/src/build-extra/ || true
+            rmdir /c/git-sdk-64/usr/src/build-extra/build-extra || true
           fi
 
-          # Move MSYS2-packages and git into SDK
-          mv "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/MSYS2-packages
-          mv "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/git
+          # move MSYS2-packages and git into SDK usr/src
+          mv "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/MSYS2-packages || (cp -a "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/ && rm -rf "$GITHUB_WORKSPACE/MSYS2-packages")
+          mv "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/git || (cp -a "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/ && rm -rf "$GITHUB_WORKSPACE/git")
 
-      - name: Build Git for Windows (full installer)
+      - name: Export windows.sdk32.path if fallback used
+        shell: bash
+        run: |
+          # read the env file produced earlier and export it for the job
+          if [ -f sdk32.env ]; then
+            cat sdk32.env
+            # this file contains a single line like: windows.sdk32.path=/c/git-sdk-64
+            export $(cat sdk32.env)
+            echo "Exported windows.sdk32.path=$windows_sdk32_path"
+          fi
+        env:
+          # ensure variable name is available in this step
+          windows_sdk32_path: ${{ env.WINDOWS_SDK32_PATH }}
+
+      - name: Probe please.sh and choose build command
         shell: bash
         run: |
           cd /c/git-sdk-64/usr/src/build-extra
-          ./please.sh release
 
-      - name: Upload artifacts
+          echo "Listing please.sh help to detect available commands"
+          # capture help output
+          ./please.sh > please.help 2>&1 || true
+          cat please.help
+
+          # choose preferred command in order: release, installer, git, makepkg
+          if grep -qE '\brelease\b' please.help; then
+            CMD=release
+          elif grep -qE '\binstaller\b' please.help; then
+            CMD=installer
+          elif grep -qE '\bgit\b' please.help; then
+            CMD=git
+          elif grep -qE '\bmakepkg\b' please.help; then
+            CMD=makepkg
+          else
+            echo "No known build command found in please.sh help. Aborting."
+            exit 2
+          fi
+
+          echo "Selected please.sh command: $CMD"
+          echo "RUN_CMD=$CMD" > run_cmd.out
+
+      - name: Run please.sh chosen command
+        shell: bash
+        run: |
+          cd /c/git-sdk-64/usr/src/build-extra
+          CMD=$(cat run_cmd.out | sed -n 's/^RUN_CMD=//p')
+          echo "Running: ./please.sh $CMD"
+          # export windows.sdk32.path for please.sh if set
+          if [ -n "$windows.sdk32.path" ]; then
+            export windows_sdk32_path="$windows.sdk32.path"
+            export windows.sdk32.path="$windows.sdk32.path"
+          fi
+          ./please.sh "$CMD"
+
+      - name: Upload artifacts if present
         uses: actions/upload-artifact@v4
         with:
           name: git-for-windows-artifacts
