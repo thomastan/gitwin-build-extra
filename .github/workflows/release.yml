@@ -26,7 +26,7 @@ jobs:
           cd /usr/src/msys2-packages/bash
           
           # 2. Build the package (using the SDK's makepkg-msys)
-          /usr/bin/makepkg-msys --noconfirm --nocheck -s
+          sdk makepkg-msys --noconfirm --nocheck -s
           
           # 3. Install it into the live SDK environment
           pacman -U --noconfirm *.pkg.tar.zst
