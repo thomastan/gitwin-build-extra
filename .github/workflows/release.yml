@@ -1,134 +1,49 @@
-name: Release Build (minimal, pinned MSYS2-packages main)
-
+name: Build GitXdgPatched
 on:
-  release:
-    types: [published]
   push:
-    tags:
-      - 'v*'
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-installer:
     runs-on: windows-latest
-    env:
-      FALLBACK_SDK32_PATH: /c/git-sdk-64
-
     steps:
       - name: Checkout build-extra
         uses: actions/checkout@v4
+
+      - name: Setup Git for Windows SDK
+        uses: git-for-windows/setup-git-for-windows-sdk@v1
         with:
-          fetch-depth: 0
-          path: build-extra
+          flavor: build-installers
 
-      - name: Checkout MSYS2-packages pinned to main
-        uses: actions/checkout@v4
-        with:
-          repository: thomastan/MSYS2-packages
-          path: MSYS2-packages
-          ref: main
-
-      - name: Checkout git upstream
-        uses: actions/checkout@v4
-        with:
-          repository: git-for-windows/git
-          path: git
-
-      - name: "Download 64-bit Git SDK"
+      - name: Build and Inject Patched Bash
+        # In this environment, 'shell: bash' IS the MSYS2 Bash from the SDK
         shell: bash
         run: |
-          curl -fLO https://github.com/git-for-windows/git-sdk-64/releases/latest/download/git-sdk-x86_64-minimal.tar.gz
+          # 1. Clone your specific branch
+          git clone --branch main https://github.com/thomastan/msys2-packages.git /usr/src/msys2-packages
+          
+          cd /usr/src/msys2-packages/bash
+          
+          # 2. Build the package (using the SDK's makepkg-msys)
+          makepkg-msys --noconfirm --nocheck -s
+          
+          # 3. Install it into the live SDK environment
+          pacman -U --noconfirm *.pkg.tar.zst
 
-      - name: "Install 64-bit SDK to C"
+      - name: Build GitXdgPatched Installer
         shell: bash
         run: |
-          mkdir -p /c/git-sdk-64
-          tar -xzf git-sdk-x86_64-minimal.tar.gz -C /c/git-sdk-64 --strip-components=1
-          mkdir -p /c/git-sdk-64/usr/src
+          cd installer
+          
+          # Update the AppName for your custom build
+          sed -i 's/AppName=Git/AppName=GitXdgPatched/' install.iss
+          
+          # Run the Inno Setup compiler (already in PATH via SDK)
+          iscc install.iss
 
-      - name: "Write sdk32.path fallback"
-        shell: bash
-        run: |
-          mkdir -p /c/git-sdk-32 || true
-          if curl -fLO "https://github.com/git-for-windows/git-sdk-32/releases/latest/download/git-sdk-i686-minimal.tar.gz" 2>/dev/null; then
-            tar -xzf git-sdk-i686-minimal.tar.gz -C /c/git-sdk-32 --strip-components=1 || true
-            echo "/c/git-sdk-32" > /c/git-sdk-64/usr/src/sdk32.path
-          else
-            echo "/c/git-sdk-64" > /c/git-sdk-64/usr/src/sdk32.path
-          fi
-
-      - name: "Place repos into SDK layout"
-        shell: bash
-        run: |
-          mkdir -p /c/git-sdk-64/usr/src
-
-          if mv "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/build-extra 2>/dev/null; then
-            echo "Moved build-extra"
-          else
-            cp -a "$GITHUB_WORKSPACE/build-extra" /c/git-sdk-64/usr/src/
-            rm -rf "$GITHUB_WORKSPACE/build-extra"
-          fi
-
-          if [ -d /c/git-sdk-64/usr/src/build-extra/build-extra ]; then
-            mv /c/git-sdk-64/usr/src/build-extra/build-extra/* /c/git-sdk-64/usr/src/build-extra/ || true
-            rmdir /c/git-sdk-64/usr/src/build-extra/build-extra || true
-          fi
-
-          if mv "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/MSYS2-packages 2>/dev/null; then
-            echo "Moved MSYS2-packages"
-          else
-            cp -a "$GITHUB_WORKSPACE/MSYS2-packages" /c/git-sdk-64/usr/src/
-            rm -rf "$GITHUB_WORKSPACE/MSYS2-packages"
-          fi
-
-          if mv "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/git 2>/dev/null; then
-            echo "Moved git"
-          else
-            cp -a "$GITHUB_WORKSPACE/git" /c/git-sdk-64/usr/src/
-            rm -rf "$GITHUB_WORKSPACE/git"
-          fi
-
-      - name: "Run please.sh if it exposes an installer/release/makepkg"
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /c/git-sdk-64/usr/src/build-extra || exit 1
-
-          # determine SDK32 path
-          if [ -f /c/git-sdk-64/usr/src/sdk32.path ]; then
-            SDK32_PATH=$(cat /c/git-sdk-64/usr/src/sdk32.path)
-          elif [ -f ../sdk32.path ]; then
-            SDK32_PATH=$(cat ../sdk32.path)
-          elif [ -f sdk32.path ]; then
-            SDK32_PATH=$(cat sdk32.path)
-          else
-            SDK32_PATH=${FALLBACK_SDK32_PATH}
-          fi
-          echo "Using windows.sdk32.path=$SDK32_PATH"
-
-          # capture please.sh output (do not fail)
-          ./please.sh > please.help 2>&1 || true
-          echo "=== please.sh output (first 200 lines) ==="
-          sed -n '1,200p' please.help || true
-          echo "=== end please.sh output ==="
-
-          # prefer installer, then release, then makepkg
-          if grep -qE '\binstaller\b' please.help; then
-            echo "Detected 'installer' command; running installer"
-            env "windows.sdk32.path=$SDK32_PATH" ./please.sh installer
-          elif grep -qE '\brelease\b' please.help; then
-            echo "Detected 'release' command; running release"
-            env "windows.sdk32.path=$SDK32_PATH" ./please.sh release
-          elif grep -qE '\bmakepkg\b' please.help; then
-            echo "Detected 'makepkg' command; running makepkg"
-            env "windows.sdk32.path=$SDK32_PATH" ./please.sh makepkg
-          else
-            echo "No installer/release/makepkg command exposed by please.sh; skipping heavy build."
-            echo "If you expect a build, ensure build-extra provides an orchestration command or run workflow manually."
-          fi
-
-      - name: "Upload artifacts (if any)"
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: git-for-windows-artifacts
-          path: /c/git-sdk-64/usr/src/build-extra/out/artifacts/*
+          name: GitXdgPatched-Installer
+          path: installer/Output/*.exe
