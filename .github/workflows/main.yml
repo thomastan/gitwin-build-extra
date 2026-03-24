@@ -1,6 +1,11 @@
 name: PR build
 
-on: pull_request
+on:
+  push:
+    branches:
+      - experiment
+  pull_request:
+  workflow_dispatch:
 
 env:
   GIT_CONFIG_PARAMETERS: "'checkout.workers=56'"
@@ -31,7 +36,17 @@ jobs:
             } >&2
           }
 
-          git diff ${{github.event.pull_request.base.sha}}... --name-only |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            git diff ${{github.event.pull_request.base.sha}}... --name-only > raw_touched.txt
+          else
+            # Force build of these targets on push/manual runs
+            echo "installer/" > raw_touched.txt
+            echo "portable/" >> raw_touched.txt
+            echo "amingit/" >> raw_touched.txt
+            echo "make-file-list.sh" >> raw_touched.txt
+          fi
+
+          cat raw_touched.txt |
             sed \
               -e '/^make-file-list\.sh$/ainstaller/' \
               -e '/^make-file-list\.sh$/aportable/' \
@@ -48,10 +63,12 @@ jobs:
           define_matrix matrix directories.txt touched.txt packages.txt &&
           show_files packages.txt &&
 
-          test -z "$(git log -L :create_sdk_artifact:please.sh ${{github.event.pull_request.base.sha}}.. -- )" &&
-          test 200 -gt $(($(git diff --numstat ${{github.event.pull_request.base.sha}}.. -- please.sh | cut -f 2))) &&
-          test -z "$(git diff ${{github.event.pull_request.base.sha}}.. -- make-file-list.sh)" ||
-          echo "test-sdk-artifacts=true" >>$GITHUB_OUTPUT
+          if [ -z "${{ github.event.pull_request.base.sha }}" ] || \
+             ! test -z "$(git log -L :create_sdk_artifact:please.sh ${{github.event.pull_request.base.sha}}.. -- )" || \
+             ! test 200 -gt $(($(git diff --numstat ${{github.event.pull_request.base.sha}}.. -- please.sh | cut -f 2))) || \
+             ! test -z "$(git diff ${{github.event.pull_request.base.sha}}.. -- make-file-list.sh)"; then
+            echo "test-sdk-artifacts=true" >>$GITHUB_OUTPUT
+          fi
 
           git ls-files \*/release.sh | sed 's|[^/]*$||' | sort >releaseable.txt &&
           if grep -q test-sdk-artifacts=true $GITHUB_OUTPUT
@@ -64,8 +81,10 @@ jobs:
           show_files artifacts.txt ||
           exit $?
 
-          test -z "$(git diff ${{github.event.pull_request.base.sha}}.. -- check-for-missing-dlls.sh)" ||
-          echo "check-for-missing-dlls=true" >>$GITHUB_OUTPUT
+          if [ -z "${{ github.event.pull_request.base.sha }}" ] || \
+             ! test -z "$(git diff ${{github.event.pull_request.base.sha}}.. -- check-for-missing-dlls.sh)"; then
+            echo "check-for-missing-dlls=true" >>$GITHUB_OUTPUT
+          fi
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       artifacts: ${{ steps.set-matrix.outputs.artifacts }}
@@ -266,15 +285,21 @@ jobs:
     runs-on: ${{ matrix.arch.runner }}
     steps:
       - uses: actions/checkout@v6
+
+      # Use full SDK, not just the build-installers flavor
       - name: initialize bare SDK clone
         shell: bash
         run: |
-          case "${{ matrix.artifact }}" in
-          full) partial=;;
-          *) partial=--filter=blob:none;;
-          esac &&
+          # If we are building installers, we need the FULL toolchain to compile Bash
+          if [ "${{ matrix.artifact }}" = "build-installers" ] || [ "${{ matrix.artifact }}" = "full" ]; then
+            partial=""
+          else
+            partial="--filter=blob:none"
+          fi
+
           git clone --bare --depth=1 --single-branch --branch=main $partial \
             https://github.com/git-for-windows/${{ matrix.arch.sdk-repo }} .sdk
+
       - name: build ${{ matrix.artifact }} artifact
         id: build-artifact
         shell: bash
@@ -300,6 +325,62 @@ jobs:
           cygpath -aw "$PWD/sdk-artifact/${{ matrix.arch.mingw-prefix }}/bin" >>$GITHUB_PATH &&
           echo "MSYSTEM=${{ matrix.arch.msystem }}" >>$GITHUB_ENV &&
           cat $GITHUB_PATH
+
+      # Intentionally, this custom bash will be built with --no-check. Our own checks will follow
+      - name: Build and Inject Xdg-Patched Bash
+        if: matrix.artifact == 'build-installers'
+        shell: bash
+        run: |
+          # Set location where output goes, which is a 'SDK' location
+          SDK_DIR="$(pwd)/sdk-artifact"
+
+          # bring back the local database folder (since please.sh wiped it)
+          mkdir -p "$SDK_DIR/var/lib/pacman/local"
+
+          "$SDK_DIR/usr/bin/pacman" -Sy --noconfirm
+          "$SDK_DIR/usr/bin/pacman" -S --noconfirm libreadline-devel ncurses-devel curl patch
+
+          mkdir -p "$SDK_DIR/usr/src/bash"
+
+          git clone --depth 1 -b xdg-patched https://github.com/thomastan/msys2-packages.git /tmp/patched-bash
+          cp -rf /tmp/patched-bash/bash/. "$SDK_DIR/usr/src/bash/"
+          
+          cd "$SDK_DIR/usr/src/bash"
+          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck --skippgpcheck"
+
+      - name: Deep Verify Bash Patch
+        if: matrix.artifact == 'build-installers'
+        shell: bash
+        env:
+          MSYSTEM: ${{ matrix.arch.msystem }}
+        run: |
+          TARGET_BASH="$(pwd)/sdk-artifact/usr/bin/bash.exe"
+          echo Deep Testing: $(sha256sum "$TARGET_BASH")
+
+          export XDG_CONFIG_HOME="$(pwd)/tmp_xdg_config"
+          export XDG_STATE_HOME="$(pwd)/tmp_xdg_state"
+          mkdir -p "$XDG_CONFIG_HOME/bash" "$XDG_STATE_HOME/bash"
+          touch "$XDG_CONFIG_HOME/bash/bashrc" "$XDG_STATE_HOME/bash/bash_history"
+
+          "$TARGET_BASH" -i -c 'echo "HIST:$HISTFILE"; echo "RC:$BASHRC"' < /dev/null > output.txt 2>&1
+          cat output.txt
+
+          grep -q "$XDG_STATE_HOME/bash/bash_history" output.txt || { echo "FAIL: XDG_STATE_HOME ignored"; exit 1; }
+          grep -q "$XDG_CONFIG_HOME/bash/bashrc" output.txt || { echo "FAIL: XDG_CONFIG_HOME ignored"; exit 1; }
+
+          rm -rf "$XDG_STATE_HOME" "$XDG_CONFIG_HOME"
+          unset XDG_STATE_HOME XDG_CONFIG_HOME
+          
+          DEFAULT_HISTFILE=$(env -u HISTFILE "$TARGET_BASH" -i -c 'echo $HISTFILE' < /dev/null 2>/dev/null)
+          
+          if [[ "$DEFAULT_HISTFILE" != "$HOME/.bash_history" ]]; then
+            echo "Error: Expected $HOME/.bash_history but got $DEFAULT_HISTFILE"
+            exit 1
+          fi
+          
+          echo "Deep Verification of Xdg-patched bash Successful for ${{ matrix.arch.name }}!"
+        # Done: xdg-bash installed in SDK path, now build installers
+
       - name: build installer
         if: matrix.artifact == 'build-installers'
         shell: bash
