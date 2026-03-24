@@ -2,7 +2,7 @@ name: Build GitXdgPatched
 
 on:
   push:
-    branches: [ main, bash-xdg-patched ]
+    branches: [ main, build-patched ]
   workflow_dispatch:
 
 jobs:
@@ -21,14 +21,26 @@ jobs:
           git clone --depth 1 https://github.com/git-for-windows/build-extra "$GIT_SDK_64/usr/src/build-extra"
           echo "GIT_VER=$("$GIT_SDK_64/mingw64/bin/git.exe" --version | awk '{print $3}')" >> $GITHUB_ENV
 
-      - name: Inject Patched Bash
-        shell: cmd
+      - name: Build and Inject Patched Bash
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.MSYS2_PACKAGES_PAT }}
+          MSYSTEM: msys
           SDK_ROOT: ${{ steps.install-sdk.outputs.result }}
         run: |
-          gh release download --repo thomastan/msys2-packages --pattern "bash-*.pkg.tar.zst"
-          tar -xvf bash-*.pkg.tar.zst -C %SDK_ROOT% usr/bin/bash.exe
+          pacman -S --noconfirm --needed msys2-devel
+
+          BUILD_DIR="$SDK_ROOT/usr/src/patched-bash"
+          mkdir -p "$BUILD_DIR"
+          cd "$BUILD_DIR"
+
+          REMOTE_BRANCH='xdg-patched'
+          REPO_URL="https://raw.githubusercontent.com/thomastan/msys2-packages/$REMOTE_BRANCH/bash"
+          curl --fail -LO "$REPO_URL/PKGBUILD"
+          curl --fail -LO "$REPO_URL/8008-bash-xdg-support.patch"
+          curl --fail -LO "$REPO_URL/8009-add-debugging-instrumentation.patch"
+
+          # -s: Sync/install dependencies (like bison, gawk, ncurses-devel)
+          makepkg -s --install --noconfirm
 
       - name: Deep Verify Bash Patch
         shell: bash
