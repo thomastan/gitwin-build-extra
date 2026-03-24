@@ -13,7 +13,8 @@ jobs:
         id: install-sdk
         uses: git-for-windows/setup-git-for-windows-sdk@v1
         with:
-          flavor: build-installers
+          # Using 'full' flavor over 'build-installers' to get build tools required for building xdg-patched bash
+          flavor: full
 
       - name: Add in build-extra
         shell: bash
@@ -27,19 +28,18 @@ jobs:
           MSYSTEM: msys
           SDK_ROOT: ${{ steps.install-sdk.outputs.result }}
         run: |
-          pacman -Sy --noconfirm --needed msys2-devel
-
           BUILD_DIR="$SDK_ROOT/usr/src/patched-bash"
           mkdir -p "$BUILD_DIR"
-          cd "$BUILD_DIR"
 
           REMOTE_BRANCH='xdg-patched'
-          REPO_URL="https://raw.githubusercontent.com/thomastan/msys2-packages/$REMOTE_BRANCH/bash"
-          curl --fail -LO "$REPO_URL/PKGBUILD"
-          curl --fail -LO "$REPO_URL/8008-bash-xdg-support.patch"
-          curl --fail -LO "$REPO_URL/8009-add-debugging-instrumentation.patch"
+          REPO_URL="https://github.com/thomastan/msys2-packages.git"
+          git clone --depth 1 -b $REMOTE_BRANCH "$REPO_URL" /tmp/all-packages
 
-          # -s: Sync/install dependencies (like bison, gawk, ncurses-devel)
+          gpg --keyserver keyserver.ubuntu.com --recv-keys BB5869F064EA74AB
+          cp -rf "/tmp/all-packages/bash/." "$BUILD_DIR/"
+
+          # -s: Sync/install dependencies
+          cd $BUILD_DIR
           makepkg -s --install --noconfirm
 
       - name: Deep Verify Bash Patch
