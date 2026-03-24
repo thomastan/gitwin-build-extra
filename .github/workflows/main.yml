@@ -344,9 +344,21 @@ jobs:
 
           git clone --depth 1 -b xdg-patched https://github.com/thomastan/msys2-packages.git /tmp/patched-bash
           cp -rf /tmp/patched-bash/bash/. "$SDK_DIR/usr/src/bash/"
-          
+
           cd "$SDK_DIR/usr/src/bash"
-          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck --skippgpcheck"
+
+          # For some reason, ghwf can fail to download from https://ftp.gnu.org, so download from https://mirrors.kernel.org
+          # extract the bash version number we would need to use in the URL
+          BASH_VER=$(grep "^_basever=" PKGBUILD | cut -d= -f2)
+
+          # Bypass GNU ftp blocks by getting bash from kernel.org mirrors (gzipped tarballs are still signed)
+          curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz{,.sig}"
+
+          "$SDK_DIR/usr/bin/gpg" --keyserver hkps://keyserver.ubuntu.com --recv-keys 7C0135FB088AAF6C66C650B9BB5869F064EA7413 || \
+          "$SDK_DIR/usr/bin/gpg" --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 7C0135FB088AAF6C66C650B9BB5869F064EA7413 || \
+          "$SDK_DIR/usr/bin/gpg" --keyserver hkps://pgp.mit.edu --recv-keys 7C0135FB088AAF6C66C650B9BB5869F064EA7413
+
+          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
       - name: Deep Verify Bash Patch
         if: matrix.artifact == 'build-installers'
