@@ -27,7 +27,7 @@ jobs:
           MSYSTEM: msys
           SDK_ROOT: ${{ steps.install-sdk.outputs.result }}
         run: |
-          pacman -S --noconfirm --needed msys2-devel
+          pacman -Sy --noconfirm --needed msys2-devel
 
           BUILD_DIR="$SDK_ROOT/usr/src/patched-bash"
           mkdir -p "$BUILD_DIR"
