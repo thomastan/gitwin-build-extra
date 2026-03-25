@@ -387,6 +387,12 @@ jobs:
          
          pacman -Sy --noconfirm --needed --overwrite "*" base-devel curl git patch autoconf pacman-contrib
 
+         if [ ! -f /usr/bin/pacman-conf ]; then
+            echo "CRITICAL ERROR: pacman-conf still missing from /usr/bin!"
+            ls -la /usr/bin/pacman*
+            exit 1
+         fi
+
          echo PATH is..... $PATH
          echo pacman-conf if .... `which pacman-conf`
 
