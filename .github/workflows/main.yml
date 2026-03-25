@@ -383,6 +383,8 @@ jobs:
          curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
          gpg --import chets-key.asc
 
+         echo PATH is..... $PATH
+
          pacman -Sy --noconfirm --needed base-devel curl git patch autoconf pacman-contrib
          makepkg -s --noconfirm --nocheck
          echo "Injecting patched Bash into staging area..."
