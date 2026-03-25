@@ -379,7 +379,7 @@ jobs:
           "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
 
           cp "`which curl`" "$SDK_DIR/usr/bin/curl.exe"
-          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "pacman -S --noconfirm curl autoconf && which curl && makepkg -si --noconfirm --nocheck"
+          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "pacman -S --noconfirm base-devel autoconf && which curl && makepkg -si --noconfirm --nocheck"
           #"$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
       - name: Deep Verify Bash Patch
