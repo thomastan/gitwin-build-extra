@@ -359,9 +359,8 @@ jobs:
 
           # Bypass GNU ftp blocks by getting bash from kernel.org mirrors (gzipped tarballs are still signed)
           curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz{,.sig}"
-          curl -fSL --retry 5 -o chet.gpg "https://keys.openpgp.org/vks/v1/by-fingerprint/7C0135FB088AAF6C66C650B9BB5869F064EA7413"
 
-          "$SDK_DIR/usr/bin/gpg" --import chet.gpg
+          "$SDK_DIR/usr/bin/gpg" --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 7C0135FB088AAF6C66C650B9BB5869F064EA7413
 
           "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
