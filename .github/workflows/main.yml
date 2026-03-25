@@ -398,7 +398,7 @@ jobs:
          echo pacman-conf is .... `which pacman-conf`
          echo curl is .... `which curl`
          echo "doing a manual download using `which curl` of http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz:"
-         `which curl` -LC - http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz
+         `which curl` -LOC - http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz
 
          export DLAGENTS=("https::/usr/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u"
                           "http::/usr/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u")
