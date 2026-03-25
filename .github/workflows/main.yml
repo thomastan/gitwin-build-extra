@@ -346,7 +346,7 @@ jobs:
           # # 1. THE PROBE: Log exactly what the network sees
           echo "DEBUG: Proving network connectivity to the mirror..."
           curl -Iv --retry 3 "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz" || echo "PROBE FAILED"
-          export MAKEPKG_DOWNLOADER='curl -v -fSL --retry 5 --retry-delay 3'
+          #export MAKEPKG_DOWNLOADER='curl -v -fSL --retry 5 --retry-delay 3'
 
           # Set location where output goes, which is a 'SDK' location
           SDK_DIR="$(pwd)/sdk-artifact"
@@ -378,6 +378,7 @@ jobs:
           curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
           "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
 
+          export DLAGENTS=("https::${SDK_DIR}/usr/bin/curl.exe -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u")
           "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
       - name: Deep Verify Bash Patch
