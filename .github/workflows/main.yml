@@ -384,13 +384,15 @@ jobs:
          gpg --import chets-key.asc
 
 
+         
+         pacman -Sy --noconfirm --needed base-devel curl git patch autoconf pacman-contrib
+
          echo PATH is..... $PATH
          echo pacman-conf if .... `which pacman-conf`
 
          export DLAGENTS=("https::/usr/bin/curl.exe -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u"
                           "http::/usr/bin/curl.exe -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u")
 
-         pacman -Sy --noconfirm --needed base-devel curl git patch autoconf pacman-contrib
          makepkg -s --noconfirm --nocheck
 
          echo "Injecting patched Bash into staging area..."
