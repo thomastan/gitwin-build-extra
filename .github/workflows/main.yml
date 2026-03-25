@@ -399,9 +399,10 @@ jobs:
          echo curl is .... `which curl`
          echo "doing a manual download using `which curl` of http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz:"
          `which curl` -LOC - http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz
+         `which curl` -LOC - http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz.sig
 
-         export DLAGENTS=("https::/usr/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u"
-                          "http::/usr/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u")
+         export DLAGENTS=("https::/mingw64/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u"
+                          "http::/mingw64/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u")
 
          export MSYSTEM=MSYS
          export MSYS2_PATH_TYPE=inherit
