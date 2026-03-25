@@ -343,9 +343,8 @@ jobs:
         if: matrix.artifact == 'build-installers'
         shell: bash
         run: |
-         # # # 1. THE PROBE: Log exactly what the network sees
-         # echo "DEBUG: Proving network connectivity to the mirror..."
-         # curl -Iv --retry 3 "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz" || echo "PROBE FAILED"
+         echo "DEBUG: Proving network connectivity to the mirror..."
+         curl -Iv --retry 3 "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz" || echo "PROBE FAILED"
          # #export MAKEPKG_DOWNLOADER='curl -v -fSL --retry 5 --retry-delay 3'
 
          # # Set location where output goes, which is a 'SDK' location
@@ -378,7 +377,7 @@ jobs:
          # #curl -fSL --retry 5 -o "bash-$BASH_VER.tar.gz.sig" "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz.sig"
 
          # #sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirrors.kernel.org/gnu/bash/|g' PKGBUILD
-         sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirror.csclub.uwaterloo.ca/gnu/bash/|g' PKGBUILD
+         sed -i 's|https://ftp.gnu.org/gnu/bash/|http://mirror.csclub.uwaterloo.ca/gnu/bash/|g' PKGBUILD
 
          curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
          gpg --import chets-key.asc
