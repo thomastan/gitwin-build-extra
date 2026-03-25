@@ -385,7 +385,7 @@ jobs:
 
 
          
-         pacman -Sy --noconfirm --needed base-devel curl git patch autoconf pacman-contrib
+         pacman -Sy --noconfirm --needed --overwrite "*" base-devel curl git patch autoconf pacman-contrib
 
          echo PATH is..... $PATH
          echo pacman-conf if .... `which pacman-conf`
