@@ -180,9 +180,9 @@ jobs:
           echo "MSYSTEM=${{ matrix.architecture.msystem }}" >>$GITHUB_ENV
 
       # Rename for validation
-      - name: Rename for Validation
-        shell: cmd
-        run: move sdk-artifact portable-git
+      #- name: Rename for Validation
+      #  shell: cmd
+      #  run: move sdk-artifact portable-git
 
       - name: build ${{ matrix.directory }}/
         shell: bash
@@ -249,7 +249,8 @@ jobs:
         run: |
           set -x &&
           root="$(cygpath -aw /)" &&
-          test "${root%portable-git}" != "$root" &&
+          # change made here
+          test "${root%sdk-artifact}" != "$root" &&
           git.exe version --build-options >version &&
           cat version
   sdk-artifacts:
@@ -333,9 +334,9 @@ jobs:
           cat $GITHUB_PATH
 
       # this is to pass some check later on
-      - name: Prepare Folder for Validation
-        shell: cmd
-        run: move sdk-artifact portable-git
+      #- name: Prepare Folder for Validation
+      #  shell: cmd
+      #  run: move sdk-artifact portable-git
 
       # Intentionally, this custom bash will be built with --no-check. Our own checks will follow
       - name: Build and Inject Xdg-Patched Bash
@@ -343,7 +344,7 @@ jobs:
         shell: bash
         run: |
           # Set location where output goes, which is a 'SDK' location
-          SDK_DIR="$(pwd)/portable-git"
+          SDK_DIR="$(pwd)/sdk-artifact"
 
           # bring back the local database folder (since please.sh wiped it)
           mkdir -p "$SDK_DIR/var/lib/pacman/local"
@@ -376,7 +377,7 @@ jobs:
         env:
           MSYSTEM: ${{ matrix.arch.msystem }}
         run: |
-          TARGET_BASH="$(pwd)/portable-git/usr/bin/bash.exe"
+          TARGET_BASH="$(pwd)/sdk-artifact/usr/bin/bash.exe"
           echo Deep Testing: $(sha256sum "$TARGET_BASH")
 
           export XDG_CONFIG_HOME="$(pwd)/tmp_xdg_config"
