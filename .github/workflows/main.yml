@@ -355,7 +355,7 @@ jobs:
           mkdir -p "$SDK_DIR/var/lib/pacman/local"
 
           "$SDK_DIR/usr/bin/pacman" -Sy --noconfirm
-          "$SDK_DIR/usr/bin/pacman" -S --noconfirm libreadline-devel ncurses-devel curl patch
+          "$SDK_DIR/usr/bin/pacman" -S --noconfirm libreadline-devel ncurses-devel patch
 
           mkdir -p "$SDK_DIR/usr/src/bash"
 
@@ -378,8 +378,6 @@ jobs:
           curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
           "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
 
-          export DLAGENTS=("https::${SDK_DIR}/usr/bin/curl.exe -k -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u"
-                           "http::${SDK_DIR}/usr/bin/curl.exe -k -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u")
           "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
       - name: Deep Verify Bash Patch
