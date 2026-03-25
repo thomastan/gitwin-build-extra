@@ -367,7 +367,8 @@ jobs:
           #curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz"
           #curl -fSL --retry 5 -o "bash-$BASH_VER.tar.gz.sig" "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz.sig"
 
-          sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirrors.kernel.org/gnu/bash/|g' PKGBUILD
+          #sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirrors.kernel.org/gnu/bash/|g' PKGBUILD
+          sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirror.csclub.uwaterloo.ca/gnu/bash/|g' PKGBUILD
 
           curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
           "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
