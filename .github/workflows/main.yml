@@ -400,6 +400,7 @@ jobs:
          echo "doing a manual download using `which curl` of http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz:"
          `which curl` -LOC - http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz
          `which curl` -LOC - http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz.sig
+         `which curl` -LOC - http://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3-patches/bash53-00{1,2,3,4,5,6,7,8,9}
 
          export DLAGENTS=("https::/mingw64/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u"
                           "http::/mingw64/bin/curl.exe -g -fvLC - --retry 3 --retry-delay 3 -o %o %u")
