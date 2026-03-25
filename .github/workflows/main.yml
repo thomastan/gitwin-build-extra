@@ -383,6 +383,7 @@ jobs:
          curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
          gpg --import chets-key.asc
 
+         pacman -Sy --noconfirm
          makepkg -s --noconfirm --nocheck
          echo "Injecting patched Bash into staging area..."
          PKG_FILE=$(ls *.pkg.tar.zst | head -n 1)
