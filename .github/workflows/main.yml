@@ -343,44 +343,53 @@ jobs:
         if: matrix.artifact == 'build-installers'
         shell: bash
         run: |
-          # # 1. THE PROBE: Log exactly what the network sees
-          echo "DEBUG: Proving network connectivity to the mirror..."
-          curl -Iv --retry 3 "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz" || echo "PROBE FAILED"
-          #export MAKEPKG_DOWNLOADER='curl -v -fSL --retry 5 --retry-delay 3'
+         # # # 1. THE PROBE: Log exactly what the network sees
+         # echo "DEBUG: Proving network connectivity to the mirror..."
+         # curl -Iv --retry 3 "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz" || echo "PROBE FAILED"
+         # #export MAKEPKG_DOWNLOADER='curl -v -fSL --retry 5 --retry-delay 3'
 
-          # Set location where output goes, which is a 'SDK' location
-          SDK_DIR="$(pwd)/sdk-artifact"
+         # # Set location where output goes, which is a 'SDK' location
+         # SDK_DIR="$(pwd)/sdk-artifact"
+         STAGING_DIR="$(pwd)/sdk-artifact"
 
-          # bring back the local database folder (since please.sh wiped it)
-          mkdir -p "$SDK_DIR/var/lib/pacman/local"
+         # # bring back the local database folder (since please.sh wiped it)
+         # mkdir -p "$SDK_DIR/var/lib/pacman/local"
 
-          "$SDK_DIR/usr/bin/pacman" -Sy --noconfirm
-          "$SDK_DIR/usr/bin/pacman" -S --noconfirm libreadline-devel ncurses-devel patch
+         # "$SDK_DIR/usr/bin/pacman" -Sy --noconfirm libreadline-devel ncurses-devel curl patch
 
-          mkdir -p "$SDK_DIR/usr/src/bash"
+         # mkdir -p "$SDK_DIR/usr/src/bash"
+         #git clone --depth 1 -b xdg-patched https://github.com/thomastan/msys2-packages.git /tmp/patched-bash
+         #cp -rf /tmp/patched-bash/bash/. "$SDK_DIR/usr/src/bash/"
 
-          git clone --depth 1 -b xdg-patched https://github.com/thomastan/msys2-packages.git /tmp/patched-bash
-          cp -rf /tmp/patched-bash/bash/. "$SDK_DIR/usr/src/bash/"
+         BUILD_DIR="/tmp/bash-build"
+         mkdir -p "$BUILD_DIR"
+         git clone --depth 1 -b xdg-patched https://github.com/thomastan/msys2-packages.git "$BUILD_DIR/repo"
+         cp -rf "$BUILD_DIR/repo/bash/." "$BUILD_DIR/"
+         cd "$BUILD_DIR"
 
-          cd "$SDK_DIR/usr/src/bash"
+         # cd "$SDK_DIR/usr/src/bash"
 
-          ## For some reason, ghwf can fail to download from https://ftp.gnu.org, so download from https://mirrors.kernel.org
-          ## extract the bash version number we would need to use in the URL
-          #BASH_VER=$(grep "^_basever=" PKGBUILD | cut -d= -f2)
+         # ## For some reason, ghwf can fail to download from https://ftp.gnu.org, so download from https://mirrors.kernel.org
+         # ## extract the bash version number we would need to use in the URL
+         # #BASH_VER=$(grep "^_basever=" PKGBUILD | cut -d= -f2)
 
-          ## Bypass GNU ftp blocks by getting bash from kernel.org mirrors (gzipped tarballs are still signed)
-          #curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz"
-          #curl -fSL --retry 5 -o "bash-$BASH_VER.tar.gz.sig" "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz.sig"
+         # ## Bypass GNU ftp blocks by getting bash from kernel.org mirrors (gzipped tarballs are still signed)
+         # #curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz"
+         # #curl -fSL --retry 5 -o "bash-$BASH_VER.tar.gz.sig" "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz.sig"
 
-          #sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirrors.kernel.org/gnu/bash/|g' PKGBUILD
-          sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirror.csclub.uwaterloo.ca/gnu/bash/|g' PKGBUILD
+         # #sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirrors.kernel.org/gnu/bash/|g' PKGBUILD
+         sed -i 's|https://ftp.gnu.org/gnu/bash/|https://mirror.csclub.uwaterloo.ca/gnu/bash/|g' PKGBUILD
 
-          curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
-          "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
+         curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
+         gpg --import chets-key.asc
 
-          cp "`which curl`" "$SDK_DIR/usr/bin/curl.exe"
-          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "pacman -S --noconfirm base-devel autoconf && which curl && makepkg -si --noconfirm --nocheck"
-          #"$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
+         makepkg -s --noconfirm --nocheck
+         echo "Injecting patched Bash into staging area..."
+         PKG_FILE=$(ls *.pkg.tar.zst | head -n 1)
+         pacman -U --noconfirm --root "$STAGING_DIR" "$PKG_FILE"
+
+         # cp "`which curl`" "$SDK_DIR/usr/bin/curl.exe"
+         # "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "pacman -S --noconfirm base-devel autoconf && which curl && makepkg -si --noconfirm --nocheck"
 
       - name: Deep Verify Bash Patch
         if: matrix.artifact == 'build-installers'
