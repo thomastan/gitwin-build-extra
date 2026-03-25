@@ -383,12 +383,15 @@ jobs:
          curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
          gpg --import chets-key.asc
 
-         echo PATH is..... $PATH
 
          pacman -Sy --noconfirm --needed base-devel curl git patch autoconf pacman-contrib
          makepkg -s --noconfirm --nocheck
+
+         echo PATH is..... $PATH
+         echo pacman-conf if .... `which pacman-conf`
+
          echo "Injecting patched Bash into staging area..."
-         PKG_FILE=$(ls *.pkg.tar.zst | head -n 1)
+         PKG_FILE=$(ls bash*.pkg.tar.zst | head -n 1)
          pacman -U --noconfirm --root "$STAGING_DIR" "$PKG_FILE"
 
          # cp "`which curl`" "$SDK_DIR/usr/bin/curl.exe"
