@@ -390,11 +390,13 @@ jobs:
          if [ ! -f /usr/bin/pacman-conf ]; then
             echo "CRITICAL ERROR: pacman-conf still missing from /usr/bin!"
             ls -la /usr/bin/pacman*
+            echo "THIS IS WHERE pacman-contrib installed pacman-conf:"
+            pacman -Ql pacman-contrib | grep pacman-conf
             exit 1
          fi
 
          echo PATH is..... $PATH
-         echo pacman-conf if .... `which pacman-conf`
+         echo pacman-conf is .... `which pacman-conf`
 
          export DLAGENTS=("https::/usr/bin/curl.exe -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u"
                           "http::/usr/bin/curl.exe -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u")
