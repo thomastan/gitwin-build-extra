@@ -385,7 +385,7 @@ jobs:
 
 
          
-         pacman -Syy --noconfirm --needed --overwrite "*" pacman base-devel curl git patch autoconf pacman-contrib
+         pacman -Syy --noconfirm --overwrite "*" pacman base-devel curl git patch autoconf pacman-contrib
 
          if [ ! -f /usr/bin/pacman-conf ]; then
             echo "CRITICAL ERROR: pacman-conf still missing from /usr/bin!"
