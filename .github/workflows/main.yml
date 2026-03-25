@@ -367,19 +367,8 @@ jobs:
           curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz"
           curl -fSL --retry 5 -o "bash-$BASH_VER.tar.gz.sig" "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz.sig"
 
-          #curl -fSL -o chets-key.gpg "https://savannah.gnu.org/project/release-gpgkeys.php?group=bash&download=1"
-          #"$SDK_DIR/usr/bin/gpg" --import chets-key.gpg
-          #"$SDK_DIR/usr/bin/gpg" --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 7C0135FB088AAF6C66C650B9BB5869F064EA7413
-          cat > chet.asc <<EOF
------BEGIN PGP PUBLIC KEY BLOCK-----
-
-mQINBFOy0YIBEADQM8fP5S5C6m+uP49W/e57e7i9M2B6uL4yKz5w1B/Yy6G8p/z6
-uH5u9E5K6m+uP49W/e57e7i9M2B6uL4yKz5w1B/Yy6G8p/z6uH5u9E5K6m+uP49W
-/e57e7i9M2B6uL4yKz5w1B/Yy6G8p/z6uH5u9E5K6m+uP49W/e57e7i9M2B6uL4y
-... [Chet Ramey's ASCII Armor Key Content] ...
------END PGP PUBLIC KEY BLOCK-----
-EOF
-          "$SDK_DIR/usr/bin/gpg" --import chet.asc
+          curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
+          "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
 
           "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
