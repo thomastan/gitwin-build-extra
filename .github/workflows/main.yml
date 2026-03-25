@@ -378,7 +378,8 @@ jobs:
           curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
           "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
 
-          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "export PATH='/c/Program Files/Git/usr/bin:\$PATH' && which curl && makepkg -si --noconfirm --nocheck"
+          cp "/c/Program Files/Git/usr/bin/curl.exe" "$SDK_DIR/usr/bin/curl.exe"
+          "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "which curl && makepkg -si --noconfirm --nocheck"
           #"$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
       - name: Deep Verify Bash Patch
