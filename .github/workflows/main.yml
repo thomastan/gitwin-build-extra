@@ -378,7 +378,7 @@ jobs:
           curl -fSL -o chets-key.asc "https://tiswww.case.edu/php/chet/gpgkey.asc"
           "$SDK_DIR/usr/bin/gpg" --import chets-key.asc
 
-          cp "/c/Program Files/Git/usr/bin/curl.exe" "$SDK_DIR/usr/bin/curl.exe"
+          cp "`which curl`" "$SDK_DIR/usr/bin/curl.exe"
           "$SDK_DIR/usr/bin/bash" --noprofile --norc -c "which curl && makepkg -si --noconfirm --nocheck"
           #"$SDK_DIR/usr/bin/bash" --noprofile --norc -c "makepkg -si --noconfirm --nocheck"
 
