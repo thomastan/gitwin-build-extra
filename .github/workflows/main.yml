@@ -343,6 +343,11 @@ jobs:
         if: matrix.artifact == 'build-installers'
         shell: bash
         run: |
+          # # 1. THE PROBE: Log exactly what the network sees
+          echo "DEBUG: Proving network connectivity to the mirror..."
+          curl -Iv --retry 3 "https://mirror.csclub.uwaterloo.ca/gnu/bash/bash-5.3.tar.gz" || echo "PROBE FAILED"
+          export MAKEPKG_DOWNLOADER='curl -v -fSL --retry 5 --retry-delay 3'
+
           # Set location where output goes, which is a 'SDK' location
           SDK_DIR="$(pwd)/sdk-artifact"
 
