@@ -178,6 +178,12 @@ jobs:
           cygpath -aw "$PWD/sdk-artifact/usr/bin" >>$GITHUB_PATH &&
           cygpath -aw "$PWD/sdk-artifact/${{ matrix.architecture.mingw-prefix }}/bin" >>$GITHUB_PATH &&
           echo "MSYSTEM=${{ matrix.architecture.msystem }}" >>$GITHUB_ENV
+
+      # Rename for validation
+      - name: Rename for Validation
+        shell: cmd
+        run: move sdk-artifact portable-git
+
       - name: build ${{ matrix.directory }}/
         shell: bash
         id: build
@@ -328,7 +334,6 @@ jobs:
 
       # this is to pass some check later on
       - name: Prepare Folder for Validation
-        if: matrix.artifact == 'build-installers'
         shell: cmd
         run: move sdk-artifact portable-git
 
@@ -358,7 +363,8 @@ jobs:
           BASH_VER=$(grep "^_basever=" PKGBUILD | cut -d= -f2)
 
           # Bypass GNU ftp blocks by getting bash from kernel.org mirrors (gzipped tarballs are still signed)
-          curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz{,.sig}"
+          curl -fSL --retry 5 -O "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz"
+          curl -fSL --retry 5 -o "bash-$BASH_VER.tar.gz.sig" "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz.sig"
 
           "$SDK_DIR/usr/bin/gpg" --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 7C0135FB088AAF6C66C650B9BB5869F064EA7413
 
@@ -370,7 +376,7 @@ jobs:
         env:
           MSYSTEM: ${{ matrix.arch.msystem }}
         run: |
-          TARGET_BASH="$(pwd)/sdk-artifact/usr/bin/bash.exe"
+          TARGET_BASH="$(pwd)/portable-git/usr/bin/bash.exe"
           echo Deep Testing: $(sha256sum "$TARGET_BASH")
 
           export XDG_CONFIG_HOME="$(pwd)/tmp_xdg_config"
