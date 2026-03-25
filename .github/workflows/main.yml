@@ -393,6 +393,9 @@ jobs:
          export DLAGENTS=("https::/usr/bin/curl.exe -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u"
                           "http::/usr/bin/curl.exe -gqb \"\" -fLC - --retry 3 --retry-delay 3 -o %o %u")
 
+         export MSYSTEM=MSYS
+         export MSYS2_PATH_TYPE=inherit
+         export PATH="/usr/bin:$PATH"
          makepkg -s --noconfirm --nocheck
 
          echo "Injecting patched Bash into staging area..."
