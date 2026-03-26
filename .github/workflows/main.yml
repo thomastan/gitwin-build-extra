@@ -540,7 +540,8 @@ jobs:
             --architecture=${{ matrix.arch.name }} \
             --sdk=.sdk \
             --out=sdk-artifact \
-            build-installers &&
+            #build-installers &&
+            full &&
           cygpath -aw "$PWD/sdk-artifact/usr/bin/core_perl" >>$GITHUB_PATH &&
           cygpath -aw "$PWD/sdk-artifact/usr/bin" >>$GITHUB_PATH &&
           cygpath -aw "$PWD/sdk-artifact/${{ matrix.arch.mingw-prefix }}/bin" >>$GITHUB_PATH &&
